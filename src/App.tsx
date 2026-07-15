@@ -1305,15 +1305,7 @@ export default function App() {
             </button>
           </form>
 
-          {/* Quick Info Credentials for easy evaluation */}
-          <div className="mt-6 p-4 bg-slate-50 border border-slate-200/60 rounded-2xl text-[11px] text-slate-500 leading-relaxed" id="demo_credentials_tip">
-            <span className="font-extrabold text-slate-700 block mb-1">💡 Demo / Setup Access Credentials:</span>
-            {loginRole === 'admin' ? (
-              <p>Username: <code className="bg-white px-1.5 py-0.5 border rounded font-mono font-bold text-slate-800">admin</code><br />Password: <code className="bg-white px-1.5 py-0.5 border rounded font-mono font-bold text-slate-800">admin123</code></p>
-            ) : (
-              <p>Username: <code className="bg-white px-1.5 py-0.5 border rounded font-mono font-bold text-slate-800">john</code>, <code className="bg-white px-1.5 py-0.5 border rounded font-mono font-bold text-slate-800">sarah</code>, <code className="bg-white px-1.5 py-0.5 border rounded font-mono font-bold text-slate-800">michael</code>, <code className="bg-white px-1.5 py-0.5 border rounded font-mono font-bold text-slate-800">emily</code><br />Password: <code className="bg-white px-1.5 py-0.5 border rounded font-mono font-bold text-slate-800">123</code></p>
-            )}
-          </div>
+
         </div>
       </div>
     );

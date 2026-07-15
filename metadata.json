@@ -1,0 +1,6 @@
+{
+  "name": "Lead Management Software",
+  "description": "A comprehensive, high-fidelity lead management system featuring integrated Admin and Staff portals, real-time follow-up tracking, lead classification, and dynamic performance metrics on a single-page interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

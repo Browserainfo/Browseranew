@@ -56,12 +56,68 @@ function writeDB(data: any) {
   }
 }
 
+// Enable CORS middleware so external websites can submit leads directly
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 app.use(express.json());
 
 // API Routes
 app.get("/api/leads-data", (req, res) => {
   const db = readDB();
   res.json(db);
+});
+
+// Website Form Integration endpoint (Receives direct submissions from external public website)
+app.post("/api/submit-lead", (req, res) => {
+  const { name, phone, email, notes, source } = req.body;
+  
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: "Name is required to submit a lead." });
+  }
+
+  const db = readDB();
+  const leadId = `lead-${Date.now()}`;
+  const timestamp = new Date().toISOString();
+  
+  const newLead = {
+    id: leadId,
+    name: name.trim(),
+    phone: phone ? phone.trim() : "",
+    email: email ? email.trim() : "",
+    source: source ? source.trim() : "Website Form",
+    status: "new",
+    notes: notes ? notes.trim() : "Prospect registered directly via online website form integration.",
+    followUpDate: "",
+    createdBy: "Website Integration",
+    updatedBy: "Website Integration",
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+
+  const newActivity = {
+    id: `act-${Date.now()}`,
+    leadId: leadId,
+    leadName: name.trim(),
+    staffName: "Website Integration",
+    action: "create",
+    details: `Prospect lead submitted directly from website form (Channel: ${newLead.source})`,
+    date: new Date().toISOString().split("T")[0],
+    timestamp: timestamp
+  };
+
+  db.leads = [newLead, ...db.leads];
+  db.activities = [newActivity, ...db.activities];
+  writeDB(db);
+
+  res.json({ success: true, leadId: leadId });
 });
 
 app.post("/api/leads-data", (req, res) => {

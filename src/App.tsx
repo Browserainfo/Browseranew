@@ -347,6 +347,10 @@ export default function App() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'hot' | 'cold' | 'dead' | 'converted'>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [onlyTodayFollowUp, setOnlyTodayFollowUp] = useState(false);
+  const [selectedCallbackDateFilter, setSelectedCallbackDateFilter] = useState<string>('');
+  const [auditSearchStaff, setAuditSearchStaff] = useState<string>('');
+  const [auditSelectedDate, setAuditSelectedDate] = useState<string>('');
+  const [dashboardPlannerDate, setDashboardPlannerDate] = useState<string>(TODAY_DATE);
   
   // New Lead Form State
   const [newLead, setNewLead] = useState({
@@ -1126,19 +1130,22 @@ export default function App() {
     // Source filter
     const matchesSource = sourceFilter === 'all' ? true : lead.source === sourceFilter;
     
-    // Scheduled follow up date toggle
-    const matchesTodayFollowUp = onlyTodayFollowUp 
-      ? (lead.status === 'hot' && lead.followUpDate === TODAY_DATE) 
-      : true;
+    // Scheduled follow up date toggle/specific date filter
+    let matchesFollowUp = true;
+    if (onlyTodayFollowUp) {
+      matchesFollowUp = lead.followUpDate === TODAY_DATE;
+    } else if (selectedCallbackDateFilter) {
+      matchesFollowUp = lead.followUpDate === selectedCallbackDateFilter;
+    }
 
-    return matchesSearch && matchesStatus && matchesSource && matchesTodayFollowUp;
+    return matchesSearch && matchesStatus && matchesSource && matchesFollowUp;
   });
 
   // Sorting Logic: "on the date lead will show at first"
-  // Leads with follow-up date matching TODAY are placed first, then other hot leads, then sorted by update time.
+  // Leads with follow-up date matching TODAY are placed first, then other future callbacks (chronological), then past callbacks, then other leads by update time.
   const sortedLeads = [...filteredLeads].sort((a, b) => {
-    const isTodayA = a.status === 'hot' && a.followUpDate === TODAY_DATE;
-    const isTodayB = b.status === 'hot' && b.followUpDate === TODAY_DATE;
+    const isTodayA = a.followUpDate === TODAY_DATE;
+    const isTodayB = b.followUpDate === TODAY_DATE;
     
     if (isTodayA && !isTodayB) return -1;
     if (!isTodayA && isTodayB) return 1;
@@ -1148,6 +1155,10 @@ export default function App() {
     const hasFollowUpB = !!b.followUpDate;
     if (hasFollowUpA && !hasFollowUpB) return -1;
     if (!hasFollowUpA && hasFollowUpB) return 1;
+    
+    if (a.followUpDate && b.followUpDate) {
+      return a.followUpDate.localeCompare(b.followUpDate);
+    }
     
     // Finally, sort by updatedAt (latest first)
     return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
@@ -1196,6 +1207,47 @@ export default function App() {
   // We will pull the unique dates from activities
   const uniqueDates = Array.from(new Set<string>(activities.map(a => a.date)))
     .sort((a, b) => b.localeCompare(a)); // Newest dates first
+
+  interface AuditEntry {
+    date: string;
+    staffName: string;
+    updateCount: number;
+    createCount: number;
+    callCount: number;
+    leadNames: string[];
+  }
+
+  const auditMap: { [key: string]: AuditEntry } = {};
+  activities.forEach(act => {
+    const key = `${act.date}_${act.staffName}`;
+    if (!auditMap[key]) {
+      auditMap[key] = {
+        date: act.date,
+        staffName: act.staffName,
+        updateCount: 0,
+        createCount: 0,
+        callCount: 0,
+        leadNames: []
+      };
+    }
+    if (act.action === 'create') {
+      auditMap[key].createCount += 1;
+    } else if (act.action === 'call') {
+      auditMap[key].callCount += 1;
+      auditMap[key].updateCount += 1;
+    } else {
+      auditMap[key].updateCount += 1;
+    }
+    if (!auditMap[key].leadNames.includes(act.leadName)) {
+      auditMap[key].leadNames.push(act.leadName);
+    }
+  });
+
+  const staffDailyAuditList = Object.values(auditMap).sort((a, b) => {
+    const dateCompare = b.date.localeCompare(a.date);
+    if (dateCompare !== 0) return dateCompare;
+    return a.staffName.localeCompare(b.staffName);
+  });
 
   if (!currentUser) {
     return (
@@ -3314,6 +3366,147 @@ export default function App() {
 
                   </div>
 
+                  {/* 📅 Interactive Date-Wise Callback Planner */}
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4" id="staff_date_wise_callback_planner">
+                    
+                    {/* Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
+                          <Calendar className="text-indigo-600 animate-pulse" size={16} />
+                          📅 Date-Wise Callback Planner & Calendar Hub
+                        </h3>
+                        <p className="text-xs text-slate-500 font-semibold">
+                          Track, schedule, and execute calls on the precise date. Click any date below to view scheduled prospects.
+                        </p>
+                      </div>
+
+                      {/* Custom Date Picker */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500 font-bold shrink-0">Select Date:</span>
+                        <input
+                          type="date"
+                          value={dashboardPlannerDate}
+                          onChange={e => setDashboardPlannerDate(e.target.value)}
+                          className="px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white font-black text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Quick-select Carousel Buttons */}
+                    <div className="grid grid-cols-5 gap-2" id="planner_quick_select">
+                      {[0, 1, 2, 3, 4].map(offset => {
+                        const targetDate = new Date();
+                        targetDate.setDate(targetDate.getDate() + offset);
+                        const isoStr = targetDate.toISOString().split('T')[0];
+                        const weekdayStr = targetDate.toLocaleDateString(undefined, { weekday: 'short' });
+                        const dayNum = targetDate.getDate();
+                        const monthStr = targetDate.toLocaleDateString(undefined, { month: 'short' });
+                        
+                        const isSelected = dashboardPlannerDate === isoStr;
+                        const dueCount = leads.filter(l => l.followUpDate === isoStr).length;
+
+                        return (
+                          <button
+                            key={offset}
+                            type="button"
+                            onClick={() => setDashboardPlannerDate(isoStr)}
+                            className={`p-3 rounded-xl border text-center transition-all duration-200 cursor-pointer flex flex-col items-center justify-center relative ${
+                              isSelected
+                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-100'
+                                : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                            }`}
+                          >
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isSelected ? 'text-indigo-100' : 'text-slate-400'}`}>
+                              {offset === 0 ? 'Today' : weekdayStr}
+                            </span>
+                            <span className="text-base font-black tracking-tight mt-0.5">{dayNum}</span>
+                            <span className={`text-[9px] font-bold ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>
+                              {monthStr}
+                            </span>
+
+                            {/* Badging for Scheduled Callbacks */}
+                            {dueCount > 0 && (
+                              <span className={`absolute -top-1.5 -right-1 px-1.5 py-0.5 text-[8px] font-black rounded-full shadow-xs ${
+                                isSelected
+                                  ? 'bg-amber-400 text-amber-950'
+                                  : 'bg-rose-500 text-white'
+                              }`}>
+                                {dueCount}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* List of Scheduled Leads for Selected Date */}
+                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-100" id="planner_leads_area">
+                      {(() => {
+                        const scheduledLeads = leads.filter(l => l.followUpDate === dashboardPlannerDate);
+                        const displayDate = new Date(dashboardPlannerDate + 'T12:00:00').toLocaleDateString(undefined, {
+                          weekday: 'long',
+                          month: 'long',
+                          day: 'numeric',
+                          year: 'numeric'
+                        });
+
+                        if (scheduledLeads.length === 0) {
+                          return (
+                            <div className="py-6 text-center text-slate-400 font-semibold text-xs flex flex-col items-center justify-center gap-1.5">
+                              <span>🎉 No callbacks scheduled for <span className="text-slate-700 font-black">{displayDate}</span></span>
+                              <span className="text-[10px] text-slate-400">All prospect queues are clear for this date!</span>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200/50 pb-2">
+                              <span>📞 Call Queue for {displayDate}</span>
+                              <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded text-[10px]">
+                                {scheduledLeads.length} Scheduled
+                              </span>
+                            </div>
+
+                            <div className="divide-y divide-slate-200/50">
+                              {scheduledLeads.map(lead => (
+                                <div key={lead.id} className="py-2.5 flex items-center justify-between gap-4 first:pt-0 last:pb-0">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-xs font-extrabold text-slate-800 truncate">{lead.name}</p>
+                                      <span className={`text-[8px] font-black px-1.5 py-0.2 rounded uppercase ${
+                                        lead.status === 'hot'
+                                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                          : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                      }`}>
+                                        {lead.status}
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-1">
+                                      <span>📞 {lead.phone || 'No phone'}</span>
+                                      <span className="text-slate-300">•</span>
+                                      <span>📧 {lead.email || 'No email'}</span>
+                                    </p>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => startEditLead(lead)}
+                                    className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] rounded-lg shadow-xs transition-colors cursor-pointer border-none"
+                                  >
+                                    Start Call / Log
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                  </div>
+
                   {/* Action Items & Recent Leads table view */}
                   <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden" id="staff_recent_leads_panel">
                     
@@ -3553,21 +3746,53 @@ export default function App() {
                       </div>
 
                       {/* Callback required today checkbox */}
-                      <label 
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${
-                          onlyTodayFollowUp 
-                            ? 'bg-amber-50 border-amber-300 text-amber-800' 
-                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={onlyTodayFollowUp}
-                          onChange={e => setOnlyTodayFollowUp(e.target.checked)}
-                          className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
-                        />
-                        <span>📅 Due Today ({leads.filter(l => l.status === 'hot' && l.followUpDate === TODAY_DATE).length})</span>
-                      </label>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label 
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${
+                            onlyTodayFollowUp 
+                              ? 'bg-amber-50 border-amber-300 text-amber-800' 
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={onlyTodayFollowUp}
+                            onChange={e => {
+                              setOnlyTodayFollowUp(e.target.checked);
+                              if (e.target.checked) setSelectedCallbackDateFilter('');
+                            }}
+                            className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                          />
+                          <span>📅 Due Today ({leads.filter(l => l.followUpDate === TODAY_DATE).length})</span>
+                        </label>
+
+                        {/* Filter by specific callback date */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-500 font-bold flex items-center gap-1 shrink-0">
+                            📅 Target Date:
+                          </span>
+                          <input
+                            type="date"
+                            value={selectedCallbackDateFilter}
+                            onChange={e => {
+                              setSelectedCallbackDateFilter(e.target.value);
+                              if (e.target.value) {
+                                setOnlyTodayFollowUp(false);
+                              }
+                            }}
+                            className="px-2.5 py-1 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 font-bold"
+                          />
+                          {selectedCallbackDateFilter && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedCallbackDateFilter('')}
+                              className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-[10px] rounded border-none cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
 
                     </div>
 
@@ -4397,6 +4622,140 @@ export default function App() {
               </div>
 
             </div>
+
+            {/* 👥 Date-Wise Staff Lead-Update Audit Desk (Satisfying Requirement #2) */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4" id="staff_lead_update_audit_desk">
+              
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
+                    <Users className="text-indigo-600" size={16} />
+                    👥 Staff Lead-Update Audit Desk
+                  </h3>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                    Monitor which sales agent edited, updated, or created how many leads grouped date-wise.
+                  </p>
+                </div>
+
+                {/* Filter controls */}
+                <div className="flex flex-wrap items-center gap-3">
+                  
+                  {/* Search Staff */}
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 text-slate-400" size={12} />
+                    <input
+                      type="text"
+                      placeholder="Search Staff Agent..."
+                      value={auditSearchStaff}
+                      onChange={e => setAuditSearchStaff(e.target.value)}
+                      className="pl-8 pr-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold"
+                    />
+                  </div>
+
+                  {/* Filter Date */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-slate-400 font-bold">Date:</span>
+                    <input
+                      type="date"
+                      value={auditSelectedDate}
+                      onChange={e => setAuditSelectedDate(e.target.value)}
+                      className="px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold"
+                    />
+                  </div>
+
+                  {(auditSearchStaff || auditSelectedDate) && (
+                    <button
+                      type="button"
+                      onClick={() => { setAuditSearchStaff(''); setAuditSelectedDate(''); }}
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs rounded-lg border-none cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  )}
+
+                </div>
+              </div>
+
+              {/* Audit Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse" id="audit_desk_table">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200/60 text-slate-500 text-[10px] font-black uppercase tracking-wider">
+                      <th className="py-2.5 px-4">Action Date</th>
+                      <th className="py-2.5 px-4">Sales Agent</th>
+                      <th className="py-2.5 px-4 text-center">Leads Created</th>
+                      <th className="py-2.5 px-4 text-center">Leads Edited/Updated</th>
+                      <th className="py-2.5 px-4 text-center">Total Operations</th>
+                      <th className="py-2.5 px-4">Target Leads</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs">
+                    {(() => {
+                      const filteredAuditList = staffDailyAuditList.filter(entry => {
+                        const matchesStaff = entry.staffName.toLowerCase().includes(auditSearchStaff.toLowerCase());
+                        const matchesDate = auditSelectedDate ? entry.date === auditSelectedDate : true;
+                        return matchesStaff && matchesDate;
+                      });
+
+                      if (filteredAuditList.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={6} className="py-8 text-center text-slate-400 font-semibold">
+                              No staff update logs found matching search filters.
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return filteredAuditList.map((entry, index) => {
+                        const formattedDate = new Date(entry.date + 'T12:00:00').toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric'
+                        });
+
+                        return (
+                          <tr key={`${entry.date}_${entry.staffName}_${index}`} className="hover:bg-slate-50/50 transition-colors">
+                            {/* Date */}
+                            <td className="py-3 px-4 font-black text-slate-800">{formattedDate}</td>
+                            
+                            {/* Staff Name */}
+                            <td className="py-3 px-4">
+                              <span className="font-extrabold text-indigo-700 bg-indigo-50/60 px-2 py-1 rounded-md">
+                                {entry.staffName}
+                              </span>
+                            </td>
+
+                            {/* Created */}
+                            <td className="py-3 px-4 text-center font-bold text-emerald-600">{entry.createCount}</td>
+
+                            {/* Edited/Updated */}
+                            <td className="py-3 px-4 text-center font-bold text-amber-600">{entry.updateCount}</td>
+
+                            {/* Total Ops */}
+                            <td className="py-3 px-4 text-center font-black text-slate-900">{entry.createCount + entry.updateCount}</td>
+
+                            {/* Lead names tags list */}
+                            <td className="py-3 px-4">
+                              <div className="flex flex-wrap gap-1 max-w-xs">
+                                {entry.leadNames.map(name => (
+                                  <span key={name} className="text-[9px] font-black bg-slate-100 hover:bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200/50">
+                                    {name}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+
+            </div>
+
           </div>
         )}
 

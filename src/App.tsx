@@ -3808,7 +3808,7 @@ export default function App() {
                       </div>
                     ) : (
                       sortedLeads.map((lead) => {
-                        const isTodayFollowUp = lead.status === 'hot' && lead.followUpDate === TODAY_DATE;
+                        const isTodayFollowUp = lead.followUpDate === TODAY_DATE;
                         
                         return (
                           <div
@@ -4009,25 +4009,23 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Callback date picker (visible for hot leads only) */}
-                      {(newLead.status === 'hot') && (
-                        <div className="p-4 bg-indigo-50 border border-indigo-150 rounded-xl animate-fade-in space-y-1.5">
-                          <label className="block text-xs font-black text-indigo-950 uppercase tracking-wider">
-                            📅 Set Call-back Follow-up Date
-                          </label>
-                          <input
-                            type="date"
-                            min={TODAY_DATE}
-                            value={newLead.followUpDate}
-                            onChange={e => setNewLead({ ...newLead, followUpDate: e.target.value })}
-                            className="w-full px-3 py-2 text-xs border border-indigo-200 rounded-xl bg-white text-indigo-950 font-extrabold focus:outline-none"
-                            required
-                          />
-                          <p className="text-[10px] text-indigo-700 font-semibold leading-relaxed">
-                            Setting this follow-up date puts this customer at the topmost queue for action on that designated date.
-                          </p>
-                        </div>
-                      )}
+                      {/* Callback date picker (visible for all leads) */}
+                      <div className="p-4 bg-indigo-50 border border-indigo-150 rounded-xl animate-fade-in space-y-1.5">
+                        <label className="block text-xs font-black text-indigo-950 uppercase tracking-wider">
+                          📅 Set Call-back Follow-up Date {newLead.status !== 'hot' && '(Optional)'}
+                        </label>
+                        <input
+                          type="date"
+                          min={TODAY_DATE}
+                          value={newLead.followUpDate}
+                          onChange={e => setNewLead({ ...newLead, followUpDate: e.target.value })}
+                          className="w-full px-3 py-2 text-xs border border-indigo-200 rounded-xl bg-white text-indigo-950 font-extrabold focus:outline-none"
+                          required={newLead.status === 'hot'}
+                        />
+                        <p className="text-[10px] text-indigo-700 font-semibold leading-relaxed">
+                          Setting this follow-up date puts this customer at the topmost queue for action on that designated date.
+                        </p>
+                      </div>
 
                       {/* Consultation Notes */}
                       <div>
@@ -5344,28 +5342,28 @@ export default function App() {
                   <label className="block text-xs font-bold text-slate-600 mb-1">Lead Status</label>
                   <select
                     value={editStatus}
-                    onChange={e => setEditStatus(e.target.value as 'hot' | 'cold' | 'dead')}
+                    onChange={e => setEditStatus(e.target.value as 'new' | 'hot' | 'cold' | 'converted' | 'dead')}
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
                   >
+                    <option value="new">New Prospect</option>
                     <option value="hot">🔥 Hot Lead</option>
                     <option value="cold">❄️ Cold Lead</option>
+                    <option value="converted">✅ Converted</option>
                     <option value="dead">💀 Dead Lead</option>
                   </select>
                 </div>
 
-                {editStatus === 'hot' && (
-                  <div className="animate-fade-in">
-                    <label className="block text-xs font-bold text-indigo-950 mb-1">📅 Set Callback Follow-up Date</label>
-                    <input
-                      type="date"
-                      min={TODAY_DATE}
-                      value={editFollowUpDate}
-                      onChange={e => setEditFollowUpDate(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs border border-indigo-300 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-indigo-50 text-indigo-950 font-semibold"
-                      required
-                    />
-                  </div>
-                )}
+                <div className="animate-fade-in">
+                  <label className="block text-xs font-bold text-indigo-950 mb-1">📅 Set Callback Follow-up Date {editStatus !== 'hot' && '(Optional)'}</label>
+                  <input
+                    type="date"
+                    min={TODAY_DATE}
+                    value={editFollowUpDate}
+                    onChange={e => setEditFollowUpDate(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs border border-indigo-300 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-indigo-50 text-indigo-950 font-semibold"
+                    required={editStatus === 'hot'}
+                  />
+                </div>
               </div>
 
               {/* Append Phone Call interaction notes */}
